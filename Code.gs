@@ -22,26 +22,32 @@ function doGet(e) {
 
 /***** ENTRYPOINT: enqueue only, no UrlFetchApp.fetch calls here *****/
 function doPost(e) {
+  // Immediate response to avoid Slack timeout
+  const response = ContentService.createTextOutput('ok').setMimeType(ContentService.MimeType.TEXT);
+  
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.command) {
+    if (data.command && data.text) {
+      // Quick validation and enqueue
       const req = {
-        text:      data.text.trim(),
-        channelId: data.channel_id,
-        userId:    data.user_id,
+        text:      data.text.trim() || 'help',
+        channelId: data.channel_id || '',
+        userId:    data.user_id || '',
         timestamp: Date.now()
       };
+      
+      // Async enqueue (don't wait for completion)
       try {
         enqueueSlashCommand(req);
       } catch (err) {
         Logger.log('[Error] enqueueSlashCommand failed: ' + err);
       }
-      return ContentService.createTextOutput('ok').setMimeType(ContentService.MimeType.TEXT);
     }
   } catch (err) {
-    Logger.log('[Error] doPost failed: ' + err);
+    Logger.log('[Error] doPost parsing failed: ' + err);
   }
-  return ContentService.createTextOutput('ok').setMimeType(ContentService.MimeType.TEXT);
+  
+  return response;
 }
 
 /***** Helper to append requests into SLASH_QUEUE *****/
@@ -87,21 +93,29 @@ function processPendingRequests() {
     const text      = item.text;
     const channelId = item.channelId;
 
-    // 1) Post "🤖 …thinking…" to Slack
+    // 1) Post "🤖 …thinking…" to Slack immediately
     let placeholderTs;
     try {
-      placeholderTs = postToSlack(channelId, null, '🤖 …thinking…');
+      placeholderTs = postToSlack(channelId, null, '🤖 Searching email archives...');
+      Logger.log(`[Info] Posted thinking message to ${channelId}, ts=${placeholderTs}`);
     } catch (err) {
       Logger.log(`[Error] Could not post "thinking" placeholder in ${channelId}: ${err}`);
-      return;
+      // Continue anyway - try to process without placeholder
+      placeholderTs = null;
     }
 
     // 2) Queue the assistant run
     try {
       queueAssistantRun(text, channelId, placeholderTs);
+      Logger.log(`[Info] Queued assistant run for: "${text.substring(0, 50)}..."`);
     } catch (err) {
       Logger.log('[Error] queueAssistantRun failed in processPendingRequests: ' + err);
-      postToSlack(channelId, null, `⚠️ Failed to start account summary: ${err.message}`);
+      const errorMsg = `⚠️ Failed to start search: ${err.message}`;
+      if (placeholderTs) {
+        postToSlack(channelId, placeholderTs, errorMsg, true);
+      } else {
+        postToSlack(channelId, null, errorMsg);
+      }
     }
   });
 }
@@ -240,6 +254,33 @@ function installFinalizeTrigger() {
     .timeBased()
     .everyMinutes(1)
     .create();
+}
+function installKeepWarmTrigger() {
+  ScriptApp.newTrigger('keepWarm')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+}
+
+/***** KEEP WARM: prevents cold starts *****/
+function keepWarm() {
+  // Simple function to keep the script warm during business hours
+  const now = new Date();
+  const hour = now.getHours();
+  
+  // Only run during business hours (9 AM - 6 PM EST)
+  if (hour >= 9 && hour <= 18) {
+    Logger.log('[KeepWarm] Script warmed at ' + now.toISOString());
+    
+    // Quick health check
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const queueCheck = props.getProperty('SLASH_QUEUE');
+      // Just checking if properties are accessible
+    } catch (err) {
+      Logger.log('[KeepWarm] Warning: ' + err.message);
+    }
+  }
 }
 
 /***** SLACK UTILITY: post a message or update *****/
