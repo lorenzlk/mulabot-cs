@@ -106,20 +106,20 @@ installFinalizeTrigger()               // Monitors assistant runs every minute
 ### Basic Command
 
 ```
-/mula What's the latest RPM data from Brit+Co?
+/mula What's the latest RPM data from X Pub?
 ```
 
 ### Example Response
 
 ```
-🤖 On June 4, 2025 (email from John at Brit+Co), the RPM was $1.05 (↑ 3% WoW). 
+🤖 On June 4, 2025 (email from John at Pub), the RPM was $1.05 (↑ 3% WoW). 
 In May it was $0.97 (flat vs. April).
 
 Next Steps:
-• Schedule a call with Brit+Co's ad ops by June 10.
+• Schedule a call with Pub X ad ops by June 10.
 • Confirm final creative assets by June 7.
 
-Anything else you'd like to know about Brit+Co?
+Anything else you'd like to know about Pub X?
 ```
 
 ## 🔧 Configuration
